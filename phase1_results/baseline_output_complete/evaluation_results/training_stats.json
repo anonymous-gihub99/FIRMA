@@ -1,0 +1,45 @@
+{
+  "dataset": {
+    "train": {
+      "path": "math_alignment_dataset/statements_part1.json",
+      "samples": 702,
+      "columns": [
+        "informal_statement",
+        "formal_statement"
+      ]
+    },
+    "valid": {
+      "path": "math_alignment_dataset/valid_clean.json",
+      "samples": 244,
+      "columns": [
+        "informal_stmt",
+        "formal_statement"
+      ]
+    },
+    "test": {
+      "path": "math_alignment_dataset/test_clean.json",
+      "samples": 244,
+      "columns": [
+        "informal_stmt",
+        "formal_statement"
+      ]
+    }
+  },
+  "models_evaluated": [
+    "direct_finetuning_ddp",
+    "retrieval_augmented",
+    "api_baseline"
+  ],
+  "evaluation_complete": true,
+  "best_bleu": 0.20669579812134553,
+  "timestamp": "2025-08-11T16:15:43.329167",
+  "files_saved": {
+    "all_results": "baseline_output_complete/evaluation_results/all_results.json",
+    "individual_results": [
+      "baseline_output_complete/evaluation_results/api_baseline_results.json",
+      "baseline_output_complete/evaluation_results/all_results.json",
+      "baseline_output_complete/evaluation_results/retrieval_augmented_results.json",
+      "baseline_output_complete/evaluation_results/direct_finetuning_ddp_results.json"
+    ]
+  }
+}

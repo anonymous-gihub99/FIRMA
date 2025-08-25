@@ -1,0 +1,56 @@
+{
+  "direct_finetuning_ddp": {
+    "formal_to_informal": {
+      "bleu": 0.1858743905666164,
+      "rouge1": 0.4473249486327783,
+      "rouge2": 0.25128416881557364,
+      "rougeL": 0.3569326834922793,
+      "bertscore_f1": 0.8585013270378112,
+      "num_samples": 30
+    },
+    "informal_to_formal": {
+      "bleu": 0.20669579812134553,
+      "rouge1": 0.38037406141876917,
+      "rouge2": 0.18139247505453057,
+      "rougeL": 0.355166701894285,
+      "bertscore_f1": 0.8201621294021606,
+      "num_samples": 30
+    }
+  },
+  "retrieval_augmented": {
+    "formal_to_informal": {
+      "bleu": 0.06158911337074614,
+      "rouge1": 0.20358709837881556,
+      "rouge2": 0.05374518647810153,
+      "rougeL": 0.15055516629604648,
+      "bertscore_f1": 0.8194334924221038,
+      "num_samples": 20
+    },
+    "informal_to_formal": {
+      "bleu": 0.017741742362114774,
+      "rouge1": 0.16070155298765026,
+      "rouge2": 0.014774904214559384,
+      "rougeL": 0.14745149916659028,
+      "bertscore_f1": 0.8148097157478332,
+      "num_samples": 20
+    }
+  },
+  "api_baseline": {
+    "formal_to_informal": {
+      "bleu": 0.09962270399964374,
+      "rouge1": 0.28740912371383953,
+      "rouge2": 0.12032361390138543,
+      "rougeL": 0.23842451664448272,
+      "bertscore_f1": 0.8267717301845551,
+      "num_samples": 25
+    },
+    "informal_to_formal": {
+      "bleu": 0.0452758562314635,
+      "rouge1": 0.19821822051827628,
+      "rouge2": 0.07020567937956629,
+      "rougeL": 0.1715274674496577,
+      "bertscore_f1": 0.7945981562137604,
+      "num_samples": 25
+    }
+  }
+}

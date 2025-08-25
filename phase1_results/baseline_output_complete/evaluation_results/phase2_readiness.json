@@ -1,0 +1,12 @@
+{
+  "ready": true,
+  "checks": {
+    "Dataset files": true,
+    "DDP model trained": true,
+    "Baselines evaluated": true,
+    "Results saved": true,
+    "BLEU > 0.15": true
+  },
+  "timestamp": "2025-08-11T16:15:43.330408",
+  "all_results_path": "baseline_output_complete/evaluation_results/all_results.json"
+}
