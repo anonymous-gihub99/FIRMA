@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-firma_model_t4.py - FIRMA model optimized for 2x T4 GPUs (30GB total memory)
-Complete Phase 2 implementation with all fixes
+firma_model_t4_fixed.py - FIRMA model with DDP fixes
 """
 
 import os
@@ -45,8 +44,8 @@ class FIRMAConfig:
     """Configuration optimized for 2x T4 GPUs (30GB total)"""
     
     # Model - smaller for T4
-    base_model: str = "Qwen/Qwen2.5-Math-7B-Instruct"  # Smaller model for T4
-    hidden_dim: int = 512  # Reduced hidden dim
+    base_model: str = "Qwen/Qwen2.5-Math-7B-Instruct"
+    hidden_dim: int = 512
     num_complexity_levels: int = 4
     num_attention_heads: int = 8
     dropout_rate: float = 0.1
@@ -54,10 +53,10 @@ class FIRMAConfig:
     # Training parameters - optimized for T4 memory
     learning_rate: float = 2e-4
     warmup_steps: int = 100
-    num_epochs: int = 3  # Reasonable for T4
-    batch_size: int = 2  # Small batch per GPU for T4
-    gradient_accumulation: int = 8  # Higher accumulation for effective batch size
-    max_length: int = 256  # Reduced for memory
+    num_epochs: int = 3
+    batch_size: int = 2
+    gradient_accumulation: int = 8
+    max_length: int = 256
     eval_batch_size: int = 4
     
     # Loss weights
@@ -67,8 +66,8 @@ class FIRMAConfig:
     lambda_validity: float = 0.15
     
     # QLoRA settings - optimized for T4
-    use_4bit: bool = True  # Essential for T4
-    lora_r: int = 16  # Reduced for T4
+    use_4bit: bool = True
+    lora_r: int = 16
     lora_alpha: int = 32
     lora_dropout: float = 0.1
     lora_target_modules: List[str] = field(default_factory=lambda: [
@@ -80,16 +79,20 @@ class FIRMAConfig:
     data_dir: str = "./FIRMA/math_alignment_dataset"
     
     # Training settings
-    progressive_training: bool = True  # Good for T4
-    gradient_checkpointing: bool = True  # Essential for T4
+    progressive_training: bool = True
+    gradient_checkpointing: bool = True
     complexity_schedule: List[int] = field(default_factory=lambda: [1, 2, 3, 4])
     
     # Hardware
-    fp16: bool = True  # Use FP16 for T4
+    fp16: bool = True
     save_total_limit: int = 2
     logging_steps: int = 20
     save_steps: int = 200
     eval_steps: int = 100
+    
+    # DDP fixes
+    use_static_graph: bool = True  # NEW: Enable static graph
+    ddp_find_unused_parameters: bool = False  # NEW: Disable unused parameter detection
 
 class ComplexityAnalyzer:
     """Analyze mathematical statement complexity"""
@@ -147,7 +150,7 @@ class FIRMADataset(Dataset):
                 with open(data_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        for item in data[:800]:  # Limit for T4
+                        for item in data[:800]:
                             self._add_item(item)
         except Exception as e:
             logger.error(f"Error loading {data_path}: {e}")
@@ -163,12 +166,12 @@ class FIRMADataset(Dataset):
         
         for key in ['formal_statement', 'formal']:
             if key in item and item[key]:
-                formal = str(item[key])[:600]  # Truncate for T4
+                formal = str(item[key])[:600]
                 break
         
         for key in ['informal_stmt', 'informal_statement', 'informal']:
             if key in item and item[key]:
-                informal = str(item[key])[:600]  # Truncate for T4
+                informal = str(item[key])[:600]
                 break
         
         if formal and informal:
@@ -236,7 +239,7 @@ class FIRMADataset(Dataset):
         }
 
 class FIRMA(nn.Module):
-    """FIRMA model optimized for T4 GPUs"""
+    """FIRMA model with DDP fixes"""
     
     def __init__(self, config: FIRMAConfig):
         super().__init__()
@@ -246,26 +249,25 @@ class FIRMA(nn.Module):
         # Get model hidden size
         self.model_hidden_size = getattr(self.base_model.config, 'hidden_size', 1536)
         
-        # Lightweight FIRMA components for T4
-        self.direction_embedding = nn.Embedding(2, 64)
-        self.complexity_embedding = nn.Embedding(config.num_complexity_levels, 64)
+        # FIXED: Separate auxiliary components to avoid parameter conflicts
+        self.use_auxiliary = True  # Flag to control auxiliary losses
         
-        # Projection to reduce dimensions
-        self.input_projection = nn.Linear(self.model_hidden_size, config.hidden_dim)
-        self.feature_projection = nn.Linear(config.hidden_dim + 128, config.hidden_dim)
-        
-        # Lightweight classifiers
-        self.complexity_classifier = nn.Linear(config.hidden_dim, config.num_complexity_levels)
-        self.validity_scorer = nn.Sequential(
-            nn.Linear(config.hidden_dim, 128),
-            nn.ReLU(),
-            nn.Dropout(config.dropout_rate),
-            nn.Linear(128, 1),
-            nn.Sigmoid()
-        )
+        if self.use_auxiliary:
+            self.direction_embedding = nn.Embedding(2, 64)
+            self.complexity_embedding = nn.Embedding(config.num_complexity_levels, 64)
+            self.input_projection = nn.Linear(self.model_hidden_size, config.hidden_dim)
+            self.feature_projection = nn.Linear(config.hidden_dim + 128, config.hidden_dim)
+            self.complexity_classifier = nn.Linear(config.hidden_dim, config.num_complexity_levels)
+            self.validity_scorer = nn.Sequential(
+                nn.Linear(config.hidden_dim, 128),
+                nn.ReLU(),
+                nn.Dropout(config.dropout_rate),
+                nn.Linear(128, 1),
+                nn.Sigmoid()
+            )
     
     def setup_base_model(self):
-        """Setup base model for T4"""
+        """Setup base model with DDP fixes"""
         
         # Check hardware
         world_size = int(os.environ.get('WORLD_SIZE', 1))
@@ -284,17 +286,19 @@ class FIRMA(nn.Module):
             load_in_4bit=True,
             bnb_4bit_use_double_quant=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16  # FP16 for T4
+            bnb_4bit_compute_dtype=torch.float16
         )
         
-        # Device mapping
-        if world_size > 1 and local_rank >= 0 and local_rank < torch.cuda.device_count():
+        # FIXED: Better device mapping for DDP
+        if world_size > 1 and local_rank >= 0:
+            # For DDP, don't use device_map="auto"
             device_map = None
-            torch.cuda.set_device(local_rank)
+            if local_rank < torch.cuda.device_count():
+                torch.cuda.set_device(local_rank)
             logger.info(f"DDP mode: rank {local_rank}/{world_size}")
         else:
             device_map = "auto"
-            logger.info("Single GPU or auto mode")
+            logger.info("Single GPU mode")
         
         # Load model
         logger.info(f"Loading {self.config.base_model} for T4...")
@@ -304,95 +308,122 @@ class FIRMA(nn.Module):
             device_map=device_map,
             trust_remote_code=True,
             torch_dtype=torch.float16,
-            use_cache=False  # Disable cache for T4 memory
+            use_cache=False
         )
         
         # Prepare for training
         self.base_model = prepare_model_for_kbit_training(
             self.base_model,
-            use_gradient_checkpointing=True
+            use_gradient_checkpointing=self.config.gradient_checkpointing
         )
         
-        # Enable gradient checkpointing
-        if hasattr(self.base_model, 'gradient_checkpointing_enable'):
-            self.base_model.gradient_checkpointing_enable()
-        
-        # Apply LoRA with T4-optimized settings
+        # FIXED: Apply LoRA with better settings for DDP
         peft_config = LoraConfig(
             r=self.config.lora_r,
             lora_alpha=self.config.lora_alpha,
             target_modules=self.config.lora_target_modules,
             lora_dropout=self.config.lora_dropout,
             bias="none",
-            task_type=TaskType.CAUSAL_LM
+            task_type=TaskType.CAUSAL_LM,
+            # FIXED: Add these for better DDP compatibility
+            modules_to_save=None,  # Don't save additional modules
         )
         
         self.base_model = get_peft_model(self.base_model, peft_config)
         self.base_model.print_trainable_parameters()
         
+        # FIXED: Enable static graph for DDP
+        if world_size > 1 and self.config.use_static_graph:
+            try:
+                self.base_model._set_static_graph()
+                logger.info("Enabled static graph for DDP")
+            except AttributeError:
+                logger.warning("Static graph not available for this model")
+        
         # Move to device if DDP
         if world_size > 1 and local_rank >= 0:
-            self.base_model = self.base_model.to(f'cuda:{local_rank}')
+            device = f'cuda:{local_rank}' if local_rank < torch.cuda.device_count() else 'cuda'
+            self.base_model = self.base_model.to(device)
     
     def forward(self, input_ids, attention_mask, labels=None, 
                 direction=None, complexity=None, **kwargs):
-        """Forward pass optimized for T4"""
+        """Forward pass with DDP fixes"""
         
-        # Base model forward
+        # FIXED: Always compute base model output first
         outputs = self.base_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=labels,
             use_cache=False,
-            output_hidden_states=True
+            output_hidden_states=self.use_auxiliary and self.training
         )
         
-        # Lightweight additional processing
-        if self.training and hasattr(outputs, 'hidden_states'):
+        # FIXED: Conditional auxiliary loss computation with consistent graph
+        if self.use_auxiliary and self.training and hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
             try:
                 # Get last hidden state and pool
                 hidden = outputs.hidden_states[-1]
                 pooled = hidden.mean(dim=1)
                 
+                # Ensure tensors are on the same device
+                device = pooled.device
+                
                 # Project to smaller dimension
                 pooled = self.input_projection(pooled)
                 
-                # Add lightweight embeddings
+                # FIXED: Always compute embeddings to maintain static graph
                 if direction is not None:
                     if not isinstance(direction, torch.Tensor):
-                        direction = torch.tensor(direction, device=input_ids.device)
+                        direction = torch.tensor(direction, device=device, dtype=torch.long)
                     if direction.dim() == 0:
                         direction = direction.unsqueeze(0)
-                    dir_emb = self.direction_embedding(direction)
-                    
+                    elif direction.dim() > 1:
+                        direction = direction.view(-1)
+                else:
+                    direction = torch.zeros(pooled.size(0), device=device, dtype=torch.long)
+                
                 if complexity is not None:
                     if not isinstance(complexity, torch.Tensor):
-                        complexity = torch.tensor(complexity, device=input_ids.device)
+                        complexity = torch.tensor(complexity, device=device, dtype=torch.long)
                     if complexity.dim() == 0:
                         complexity = complexity.unsqueeze(0)
-                    comp_emb = self.complexity_embedding(complexity)
-                    
-                    # Concatenate and project
-                    if direction is not None:
-                        features = torch.cat([pooled, dir_emb, comp_emb], dim=-1)
-                    else:
-                        features = torch.cat([pooled, comp_emb, torch.zeros_like(comp_emb)], dim=-1)
-                    
-                    features = self.feature_projection(features)
-                    
-                    # Compute auxiliary losses
-                    comp_logits = self.complexity_classifier(features)
-                    comp_loss = F.cross_entropy(comp_logits, complexity)
-                    
-                    validity = self.validity_scorer(features)
-                    val_loss = -validity.mean() * 0.1
-                    
-                    # Update total loss
-                    if outputs.loss is not None:
-                        outputs.loss = outputs.loss + self.config.lambda_complexity * comp_loss + val_loss
+                    elif complexity.dim() > 1:
+                        complexity = complexity.view(-1)
+                else:
+                    complexity = torch.ones(pooled.size(0), device=device, dtype=torch.long)
+                
+                # Ensure same batch size
+                batch_size = pooled.size(0)
+                if direction.size(0) != batch_size:
+                    direction = direction.expand(batch_size)
+                if complexity.size(0) != batch_size:
+                    complexity = complexity.expand(batch_size)
+                
+                # Compute embeddings
+                dir_emb = self.direction_embedding(direction)
+                comp_emb = self.complexity_embedding(complexity)
+                
+                # Concatenate and project
+                features = torch.cat([pooled, dir_emb, comp_emb], dim=-1)
+                features = self.feature_projection(features)
+                
+                # Compute auxiliary losses
+                comp_logits = self.complexity_classifier(features)
+                comp_loss = F.cross_entropy(comp_logits, complexity)
+                
+                validity = self.validity_scorer(features)
+                val_loss = -validity.mean() * 0.1
+                
+                # Update total loss
+                if outputs.loss is not None:
+                    outputs.loss = (outputs.loss + 
+                                  self.config.lambda_complexity * comp_loss + 
+                                  val_loss)
                         
             except Exception as e:
-                logger.debug(f"Auxiliary loss computation skipped: {e}")
+                logger.debug(f"Auxiliary loss computation failed: {e}")
+                # Don't fail the forward pass
+                pass
         
         return outputs
     
@@ -414,18 +445,19 @@ class FIRMA(nn.Module):
         self.base_model.save_pretrained(path)
         
         # Save FIRMA components
-        torch.save({
-            'direction_embedding': self.direction_embedding.state_dict(),
-            'complexity_embedding': self.complexity_embedding.state_dict(),
-            'input_projection': self.input_projection.state_dict(),
-            'feature_projection': self.feature_projection.state_dict(),
-            'complexity_classifier': self.complexity_classifier.state_dict(),
-            'validity_scorer': self.validity_scorer.state_dict(),
-            'config': self.config
-        }, Path(path) / 'firma_components.pt')
+        if self.use_auxiliary:
+            torch.save({
+                'direction_embedding': self.direction_embedding.state_dict(),
+                'complexity_embedding': self.complexity_embedding.state_dict(),
+                'input_projection': self.input_projection.state_dict(),
+                'feature_projection': self.feature_projection.state_dict(),
+                'complexity_classifier': self.complexity_classifier.state_dict(),
+                'validity_scorer': self.validity_scorer.state_dict(),
+                'config': self.config
+            }, Path(path) / 'firma_components.pt')
 
 class FIRMATrainer:
-    """Trainer optimized for T4 GPUs"""
+    """Trainer with DDP fixes"""
     
     def __init__(self, model, tokenizer, config):
         self.model = model
@@ -433,9 +465,9 @@ class FIRMATrainer:
         self.config = config
     
     def train(self):
-        """Train FIRMA on T4 GPUs"""
+        """Train FIRMA with DDP fixes"""
         logger.info("="*60)
-        logger.info("Starting FIRMA training on T4 GPUs")
+        logger.info("Starting FIRMA training with DDP fixes")
         logger.info("="*60)
         
         # Get datasets
@@ -449,7 +481,7 @@ class FIRMATrainer:
         logger.info(f"Training samples: {len(train_dataset)}")
         logger.info(f"Validation samples: {len(val_dataset)}")
         
-        # Training arguments for T4
+        # FIXED: Training arguments with DDP fixes
         training_args = TrainingArguments(
             output_dir=self.config.output_dir,
             num_train_epochs=self.config.num_epochs,
@@ -468,13 +500,17 @@ class FIRMATrainer:
             metric_for_best_model="loss",
             greater_is_better=False,
             fp16=self.config.fp16,
-            optim="paged_adamw_8bit",  # Memory efficient optimizer
+            optim="paged_adamw_8bit",
             report_to="none",
             remove_unused_columns=False,
-            dataloader_pin_memory=False,  # Save memory
-            gradient_checkpointing=True,
+            dataloader_pin_memory=False,
+            gradient_checkpointing=self.config.gradient_checkpointing,
             max_grad_norm=1.0,
-            dataloader_num_workers=2  # Limited for T4
+            dataloader_num_workers=2,
+            # FIXED: DDP specific settings
+            ddp_find_unused_parameters=self.config.ddp_find_unused_parameters,
+            ddp_bucket_cap_mb=25,  # Smaller bucket for T4
+            ddp_broadcast_buffers=False,  # Save memory
         )
         
         # Create trainer
@@ -529,7 +565,14 @@ class FIRMATrainer:
         return FIRMADataset("", self.tokenizer, self.config, split)
 
 def main():
-    """Main training function"""
+    """Main training function with DDP support"""
+    
+    # FIXED: Initialize distributed training if needed
+    if 'LOCAL_RANK' in os.environ:
+        local_rank = int(os.environ['LOCAL_RANK'])
+        torch.cuda.set_device(local_rank)
+        torch.distributed.init_process_group(backend='nccl')
+        logger.info(f"Initialized DDP on rank {local_rank}")
     
     # Initialize config for T4
     config = FIRMAConfig()
@@ -546,7 +589,7 @@ def main():
         tokenizer.pad_token = tokenizer.eos_token
     
     # Initialize model
-    logger.info("Initializing FIRMA model for T4...")
+    logger.info("Initializing FIRMA model with DDP fixes...")
     model = FIRMA(config)
     
     # Train
