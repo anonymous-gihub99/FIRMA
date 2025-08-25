@@ -45,7 +45,7 @@ class FIRMAConfig:
     """Configuration optimized for 2x T4 GPUs (30GB total)"""
     
     # Model - smaller for T4
-    base_model: str = "Qwen/Qwen2.5-1.5B"  # Smaller model for T4
+    base_model: str = "Qwen/Qwen2.5-Math-7B-Instruct"  # Smaller model for T4
     hidden_dim: int = 512  # Reduced hidden dim
     num_complexity_levels: int = 4
     num_attention_heads: int = 8
@@ -147,7 +147,7 @@ class FIRMADataset(Dataset):
                 with open(data_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        for item in data[:5000]:  # Limit for T4
+                        for item in data[:800]:  # Limit for T4
                             self._add_item(item)
         except Exception as e:
             logger.error(f"Error loading {data_path}: {e}")
@@ -161,14 +161,14 @@ class FIRMADataset(Dataset):
         formal = None
         informal = None
         
-        for key in ['formal_stmt', 'formal_statement', 'formal']:
+        for key in ['formal_statement', 'formal']:
             if key in item and item[key]:
-                formal = str(item[key])[:500]  # Truncate for T4
+                formal = str(item[key])[:600]  # Truncate for T4
                 break
         
         for key in ['informal_stmt', 'informal_statement', 'informal']:
             if key in item and item[key]:
-                informal = str(item[key])[:500]  # Truncate for T4
+                informal = str(item[key])[:600]  # Truncate for T4
                 break
         
         if formal and informal:
@@ -514,9 +514,9 @@ class FIRMATrainer:
     def _get_dataset(self, split):
         """Get dataset for split"""
         file_map = {
-            'train': ['train.json', 'train.jsonl', 'statements_part1.json'],
-            'val': ['val.json', 'valid_clean.json', 'val.jsonl'],
-            'test': ['test.json', 'test_clean.json', 'test.jsonl']
+            'train': ['train.json', 'train.jsonl', 'train_clean.json'],
+            'val': ['val.json', 'valid_clean.json'],
+            'test': ['test.json', 'test_clean.json']
         }
         
         for filename in file_map.get(split, []):
