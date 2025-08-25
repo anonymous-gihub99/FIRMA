@@ -72,7 +72,7 @@ except ImportError as e:
 check_dataset() {
     echo "Checking dataset..."
     
-    if [ ! -d "./math_alignment_dataset" ]; then
+    if [ ! -d "./FIRMA/math_alignment_dataset" ]; then
         echo "❌ Dataset directory not found: ./math_alignment_dataset"
         echo "  Please ensure the dataset is available"
         exit 1
