@@ -204,7 +204,7 @@ def generate_test_samples(n_samples: int = 400) -> List[Dict]:
     """Load test samples from actual dataset files"""
     
     samples = []
-    data_dir = Path("./math_alignment_dataset")
+    data_dir = Path("./FIRMA/mini/math_alignment_dataset")
     
     # File configurations with column names
     file_configs = [
