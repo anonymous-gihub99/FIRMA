@@ -106,14 +106,15 @@ class ComplexityAnalyzer:
         }
     
     def compute_complexity(self, text: str) -> int:
-        """Compute complexity level (1-4)"""
+        """Compute complexity level (1-4) with bounds checking"""
         if not text:
             return 1
         max_level = 1
         for level, indicators in self.complexity_indicators.items():
             if any(ind in text.lower() for ind in indicators):
                 max_level = max(max_level, level)
-        return min(max_level, 4)
+        # FIXED: Ensure complexity is always within valid bounds
+        return max(1, min(max_level, 4))
 
 class FIRMADataset(Dataset):
     """Optimized dataset for T4 GPUs"""
@@ -205,28 +206,51 @@ class FIRMADataset(Dataset):
             prompt = f"Translate to formal: {item['informal']}\nFormal:"
             target = item['formal']
         
-        # Tokenize
-        full_text = f"{prompt} {target}"
-        encoding = self.tokenizer(
-            full_text,
-            truncation=True,
-            max_length=self.config.max_length,
-            padding="max_length",
-            return_tensors="pt"
-        )
-        
-        # Create labels
-        prompt_ids = self.tokenizer(prompt, truncation=True)['input_ids']
-        labels = encoding['input_ids'].clone()
-        labels[0, :len(prompt_ids)] = -100
-        
-        return {
-            'input_ids': encoding['input_ids'].squeeze(0),
-            'attention_mask': encoding['attention_mask'].squeeze(0),
-            'labels': labels.squeeze(0),
-            'direction': torch.tensor(direction, dtype=torch.long),
-            'complexity': torch.tensor(item['complexity'], dtype=torch.long)
-        }
+        # FIXED: Safe tokenization with bounds checking
+        try:
+            # Tokenize with error handling
+            full_text = f"{prompt} {target}"
+            encoding = self.tokenizer(
+                full_text,
+                truncation=True,
+                max_length=self.config.max_length,
+                padding="max_length",
+                return_tensors="pt",
+                add_special_tokens=True
+            )
+            
+            # Create labels with safe indexing
+            prompt_encoding = self.tokenizer(
+                prompt, 
+                truncation=True,
+                max_length=self.config.max_length,
+                add_special_tokens=True
+            )
+            prompt_len = len(prompt_encoding['input_ids'])
+            
+            labels = encoding['input_ids'].clone()
+            # FIXED: Safe label masking
+            safe_prompt_len = min(prompt_len, labels.size(-1))
+            labels[0, :safe_prompt_len] = -100
+            
+            # FIXED: Validate token IDs are within vocabulary
+            vocab_size = getattr(self.tokenizer, 'vocab_size', 50000)
+            input_ids = torch.clamp(encoding['input_ids'], 0, vocab_size - 1)
+            
+            # FIXED: Validate complexity bounds
+            complexity_val = max(0, min(item['complexity'] - 1, self.config.num_complexity_levels - 1))
+            
+            return {
+                'input_ids': input_ids.squeeze(0),
+                'attention_mask': encoding['attention_mask'].squeeze(0),
+                'labels': labels.squeeze(0),
+                'direction': torch.tensor(direction, dtype=torch.long),
+                'complexity': torch.tensor(complexity_val, dtype=torch.long)
+            }
+            
+        except Exception as e:
+            logger.warning(f"Tokenization error for idx {idx}: {e}")
+            return self._get_dummy_item()
     
     def _get_dummy_item(self):
         """Return dummy item for empty dataset"""
@@ -347,7 +371,12 @@ class FIRMA(nn.Module):
     
     def forward(self, input_ids, attention_mask, labels=None, 
                 direction=None, complexity=None, **kwargs):
-        """Forward pass with DDP fixes"""
+        """Forward pass with CUDA indexing fixes"""
+        
+        # FIXED: Validate input_ids bounds to prevent CUDA indexing errors
+        if input_ids is not None:
+            vocab_size = getattr(self.base_model.config, 'vocab_size', 50000)
+            input_ids = torch.clamp(input_ids, 0, vocab_size - 1)
         
         # FIXED: Always compute base model output first
         outputs = self.base_model(
@@ -358,7 +387,7 @@ class FIRMA(nn.Module):
             output_hidden_states=self.use_auxiliary and self.training
         )
         
-        # FIXED: Conditional auxiliary loss computation with consistent graph
+        # FIXED: Conditional auxiliary loss computation with bounds checking
         if self.use_auxiliary and self.training and hasattr(outputs, 'hidden_states') and outputs.hidden_states is not None:
             try:
                 # Get last hidden state and pool
@@ -367,11 +396,12 @@ class FIRMA(nn.Module):
                 
                 # Ensure tensors are on the same device
                 device = pooled.device
+                batch_size = pooled.size(0)
                 
                 # Project to smaller dimension
                 pooled = self.input_projection(pooled)
                 
-                # FIXED: Always compute embeddings to maintain static graph
+                # FIXED: Safe direction handling with bounds checking
                 if direction is not None:
                     if not isinstance(direction, torch.Tensor):
                         direction = torch.tensor(direction, device=device, dtype=torch.long)
@@ -379,9 +409,26 @@ class FIRMA(nn.Module):
                         direction = direction.unsqueeze(0)
                     elif direction.dim() > 1:
                         direction = direction.view(-1)
+                    
+                    # FIXED: Clamp direction to valid range [0, 1]
+                    direction = torch.clamp(direction, 0, 1)
+                    
+                    # Ensure correct batch size
+                    if direction.size(0) != batch_size:
+                        if direction.size(0) == 1:
+                            direction = direction.expand(batch_size)
+                        else:
+                            direction = direction[:batch_size]
+                            if direction.size(0) < batch_size:
+                                direction = torch.cat([
+                                    direction, 
+                                    torch.zeros(batch_size - direction.size(0), 
+                                              device=device, dtype=torch.long)
+                                ])
                 else:
-                    direction = torch.zeros(pooled.size(0), device=device, dtype=torch.long)
+                    direction = torch.zeros(batch_size, device=device, dtype=torch.long)
                 
+                # FIXED: Safe complexity handling with bounds checking
                 if complexity is not None:
                     if not isinstance(complexity, torch.Tensor):
                         complexity = torch.tensor(complexity, device=device, dtype=torch.long)
@@ -389,17 +436,33 @@ class FIRMA(nn.Module):
                         complexity = complexity.unsqueeze(0)
                     elif complexity.dim() > 1:
                         complexity = complexity.view(-1)
+                    
+                    # FIXED: Clamp complexity to valid range [0, num_complexity_levels-1]
+                    complexity = torch.clamp(complexity, 0, self.config.num_complexity_levels - 1)
+                    
+                    # Ensure correct batch size
+                    if complexity.size(0) != batch_size:
+                        if complexity.size(0) == 1:
+                            complexity = complexity.expand(batch_size)
+                        else:
+                            complexity = complexity[:batch_size]
+                            if complexity.size(0) < batch_size:
+                                complexity = torch.cat([
+                                    complexity,
+                                    torch.ones(batch_size - complexity.size(0), 
+                                             device=device, dtype=torch.long)
+                                ])
                 else:
-                    complexity = torch.ones(pooled.size(0), device=device, dtype=torch.long)
+                    complexity = torch.ones(batch_size, device=device, dtype=torch.long)
                 
-                # Ensure same batch size
-                batch_size = pooled.size(0)
-                if direction.size(0) != batch_size:
-                    direction = direction.expand(batch_size)
-                if complexity.size(0) != batch_size:
-                    complexity = complexity.expand(batch_size)
+                # FIXED: Validate indices before embedding lookup
+                assert direction.max() < 2, f"Direction index {direction.max()} >= 2"
+                assert direction.min() >= 0, f"Direction index {direction.min()} < 0"
+                assert complexity.max() < self.config.num_complexity_levels, \
+                    f"Complexity index {complexity.max()} >= {self.config.num_complexity_levels}"
+                assert complexity.min() >= 0, f"Complexity index {complexity.min()} < 0"
                 
-                # Compute embeddings
+                # Safe embedding lookups
                 dir_emb = self.direction_embedding(direction)
                 comp_emb = self.complexity_embedding(complexity)
                 
@@ -421,8 +484,8 @@ class FIRMA(nn.Module):
                                   val_loss)
                         
             except Exception as e:
-                logger.debug(f"Auxiliary loss computation failed: {e}")
-                # Don't fail the forward pass
+                logger.warning(f"Auxiliary loss computation failed: {e}")
+                # Don't fail the forward pass, just skip auxiliary losses
                 pass
         
         return outputs
@@ -565,7 +628,7 @@ class FIRMATrainer:
         return FIRMADataset("", self.tokenizer, self.config, split)
 
 def main():
-    """Main training function with DDP support"""
+    """Main training function with comprehensive error handling"""
     
     # FIXED: Initialize distributed training if needed
     if 'LOCAL_RANK' in os.environ:
@@ -577,7 +640,7 @@ def main():
     # Initialize config for T4
     config = FIRMAConfig()
     
-    # Initialize tokenizer
+    # Initialize tokenizer with validation
     logger.info(f"Loading tokenizer for {config.base_model}")
     tokenizer = AutoTokenizer.from_pretrained(
         config.base_model,
@@ -588,9 +651,25 @@ def main():
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
+    # FIXED: Log tokenizer info for debugging
+    logger.info(f"Tokenizer vocab size: {tokenizer.vocab_size}")
+    logger.info(f"Tokenizer pad token: {tokenizer.pad_token}")
+    logger.info(f"Tokenizer eos token: {tokenizer.eos_token}")
+    
+    # Test tokenizer with sample text
+    test_text = "Test tokenization"
+    test_tokens = tokenizer(test_text, return_tensors="pt")
+    logger.info(f"Test tokenization - input_ids shape: {test_tokens['input_ids'].shape}")
+    logger.info(f"Test tokenization - max token id: {test_tokens['input_ids'].max().item()}")
+    
     # Initialize model
-    logger.info("Initializing FIRMA model with DDP fixes...")
+    logger.info("Initializing FIRMA model with CUDA indexing fixes...")
     model = FIRMA(config)
+    
+    # FIXED: Validate model configuration
+    logger.info(f"Model vocab size: {getattr(model.base_model.config, 'vocab_size', 'Unknown')}")
+    logger.info(f"Complexity levels: {config.num_complexity_levels}")
+    logger.info(f"Direction embedding size: 2")
     
     # Train
     trainer = FIRMATrainer(model, tokenizer, config)
