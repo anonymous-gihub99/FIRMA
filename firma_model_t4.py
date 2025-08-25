@@ -77,7 +77,7 @@ class FIRMAConfig:
     
     # Paths
     output_dir: str = "./firma_model_t4"
-    data_dir: str = "./math_alignment_dataset"
+    data_dir: str = "./FIRMA/math_alignment_dataset"
     
     # Training settings
     progressive_training: bool = True  # Good for T4
