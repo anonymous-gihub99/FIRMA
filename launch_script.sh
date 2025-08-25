@@ -82,8 +82,8 @@ check_dataset() {
     for split in train val test; do
         found=0
         for ext in json jsonl; do
-            for pattern in "${split}.${ext}" "${split}_clean.${ext}" "valid_clean.${ext}"; do
-                if [ -f "./math_alignment_dataset/${pattern}" ]; then
+            for pattern in "${split}.${ext}" "train_clean.json" "valid_clean.json" "test_clean.json"; do
+                if [ -f "./FIRMA/math_alignment_dataset/${pattern}" ]; then
                     echo "✓ Found ${split} data: ${pattern}"
                     found=1
                     break 2
