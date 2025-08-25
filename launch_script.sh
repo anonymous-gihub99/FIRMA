@@ -108,7 +108,7 @@ train_model() {
     
     if [ $GPUS -eq 1 ]; then
         echo "Running single GPU training..."
-        python3 firma_model_t4.py 2>&1 | tee $LOG_FILE
+        python3 ./FIRMA/firma_model_t4.py 2>&1 | tee $LOG_FILE
     else
         echo "Running multi-GPU training with $GPUS GPUs..."
         
@@ -119,8 +119,8 @@ train_model() {
             CMD="python3 -m torch.distributed.run --nproc_per_node=$GPUS --master_port=$PORT"
         fi
         
-        echo "Command: $CMD firma_model_t4.py"
-        $CMD firma_model_t4.py 2>&1 | tee $LOG_FILE
+        echo "Command: $CMD ./FIRMA/firma_model_t4.py"
+        $CMD ./FIRMA/firma_model_t4.py 2>&1 | tee $LOG_FILE
     fi
     
     # Check if training succeeded
@@ -143,7 +143,7 @@ evaluate_model() {
     LOG_FILE="${LOG_DIR}/evaluation_$(date +%Y%m%d_%H%M%S).log"
     
     echo "Running evaluation..."
-    python3 evaluate_firma.py 2>&1 | tee $LOG_FILE
+    python3 ./FIRMA/evaluation_script.py 2>&1 | tee $LOG_FILE
     
     # Check if evaluation succeeded
     if [ -f "${RESULTS_DIR}/all_results.json" ]; then
