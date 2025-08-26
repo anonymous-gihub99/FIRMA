@@ -25,10 +25,8 @@ FIRMA (Formal-Informal Reasoning in Mathematical Alignment) is the first bidirec
 - 🎓 Successfully handles **4 complexity levels** of mathematical reasoning
 
 > **📌 Note**: We are actively working on extended results and additional experiments. Please check our [GitHub repository](https://github.com/anonymous-gihub99/FIRMA) regularly for updates, including:
-> - Expanded evaluation on larger test sets
+> - FIRMA BLEU and ROUGE-L scores
 > - Additional baseline comparisons
-> - Human evaluation studies (N=50+)
-> - Cross-domain generalization experiments
 > - Interactive demo notebook
 
 ## 🚀 Quick Start
@@ -85,10 +83,10 @@ python train_firma.py
 torchrun --nproc_per_node=4 firma_model_t4.py
 
 # Evaluate
-python evaluate_firma_real.py
+python evaluate.py
 
 # Generate paper visualizations
-python visualize_results.py
+python visualization_notebook.py
 ```
 
 ## 📁 Repository Structure
@@ -103,19 +101,12 @@ FIRMA/
 ├── firma_model.py          # Core FIRMA architecture
 ├── firma_model_t4.py       # Optimized for T4 GPUs
 ├── train_firma.py          # Training script
-├── evaluation_script.py    # Evaluation pipeline
+├── evaluate.py             # Evaluation pipeline
 ├── launch_script.sh        # Complete training pipeline
 └── paper_figures/          # Visualization outputs
 ```
 
 ## 📊 Results
-
-### Translation Performance (100 test samples)
-
-| Direction | BLEU-4 | ROUGE-L | Avg Time (s) |
-|-----------|--------|---------|--------------|
-| Formal→Informal | 0.72 | 0.74 | 5.33 |
-| Informal→Formal | 0.68 | 0.70 | 10.42 |
 
 ### Complexity-Stratified Analysis
 
@@ -142,7 +133,7 @@ If you find FIRMA useful for your research, please cite our paper:
 @inproceedings{anonymous2025firma,
   title={FIRMA: Bidirectional Formal-Informal Mathematical Language Alignment with Proof-Theoretic Grounding},
   author={Anonymous},
-  booktitle={Proceedings of the 2nd Workshop on Mathematical Natural Language Processing (MathNLP) at EMNLP 2025},
+  booktitle={Proceedings of the 3rd Workshop on Mathematical Natural Language Processing (MathNLP) at EMNLP 2025},
   year={2025},
   url={https://github.com/anonymous-gihub99/FIRMA}
 }
@@ -160,7 +151,7 @@ For questions and feedback:
 
 ## 🙏 Acknowledgments
 
-We thank the MathNLP 2025 workshop organizers and the EMNLP community for their valuable feedback. This work was supported by [funding details to be added].
+We thank the MathNLP 2025 workshop organizers and the EMNLP community for their valuable feedback. 
 
 ## 📄 License
 
