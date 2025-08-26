@@ -40,9 +40,6 @@ cd FIRMA
 # Install dependencies
 pip install -r requirements.txt
 
-# Download pretrained model (optional)
-wget https://huggingface.co/firma/firma-qwen-7b/resolve/main/firma_model.tar.gz
-tar -xzf firma_model.tar.gz -C ./firma_model_t4/final/
 ```
 
 ### Quick Inference
