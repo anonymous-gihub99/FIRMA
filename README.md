@@ -171,10 +171,10 @@ FIRMA employs a hierarchical encoder-decoder architecture with:
 ## 📈 Visualizations
 
 ### Performance Comparison
-![BLEU Scores Comparison](paper_figures/performance.png)
+![BLEU Scores Comparison](figures/performance.png)
 
 ### Complexity-Stratified Performance  
-![Complexity Analysis](paper_figures/complexity.png)
+![Complexity Analysis](figures/complexity.png)
 
 
 
