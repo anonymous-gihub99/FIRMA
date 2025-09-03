@@ -171,13 +171,12 @@ FIRMA employs a hierarchical encoder-decoder architecture with:
 ## 📈 Visualizations
 
 ### Performance Comparison
-![BLEU Scores Comparison](paper_figures/bleu_comparison.png)
+![BLEU Scores Comparison](paper_figures/performance.png)
 
 ### Complexity-Stratified Performance  
-![Complexity Analysis](paper_figures/complexity_analysis.png)
+![Complexity Analysis](paper_figures/complexity.png)
 
-### Translation Quality Examples
-![Translation Examples](paper_figures/translation_examples.png)
+
 
 ## 🎯 Key Findings
 
@@ -193,7 +192,7 @@ If you find FIRMA useful for your research, please cite our paper:
 @inproceedings{firma2025mathnlp,
   title={FIRMA: Bidirectional Formal-Informal Mathematical Language Alignment with Proof-Theoretic Grounding},
   author={[Authors]},
-  booktitle={Proceedings of the 2nd Workshop on Mathematical Natural Language Processing (MathNLP) at EMNLP 2025},
+  booktitle={Proceedings of the 3rd Workshop on Mathematical Natural Language Processing (MathNLP) at EMNLP 2025},
   year={2025},
   url={https://github.com/anonymous-github99/FIRMA}
 }
@@ -207,11 +206,6 @@ We welcome contributions! Areas of interest:
 - Improving complexity classification
 - Adding interactive demonstrations
 
-## 📧 Contact
-
-For questions and feedback:
-- Open an issue on [GitHub](https://github.com/anonymous-github99/FIRMA/issues)
-- Workshop: [MathNLP 2025](https://sites.google.com/view/mathnlp2025)
 
 ## 🙏 Acknowledgments
 
