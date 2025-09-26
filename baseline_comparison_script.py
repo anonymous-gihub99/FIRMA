@@ -56,7 +56,7 @@ class ComparisonConfig:
     # Dataset settings
     dataset_name: str = "FrenzyMath/Herald_proofs"
     dataset_split: str = "test"
-    max_samples: Optional[int] = 200
+    max_samples: Optional[int] = 230
     stratified_sampling: bool = True  # Sample across complexity levels
     
     # Generation settings
