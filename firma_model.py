@@ -916,7 +916,7 @@ def create_and_train_firma():
         logger.info(f"Found {gpu_count} GPU(s), Memory: {gpu_memory:.2f} GB")
         
         if gpu_memory < 16:  # T4
-            config.base_model = "Qwen/Qwen3-4B"  # Smaller model
+            config.base_model = "Qwen/Qwen3-8B"  # Smaller model
             config.batch_size = 1
             config.gradient_accumulation = 8
             config.max_length = 128
