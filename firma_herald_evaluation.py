@@ -48,7 +48,7 @@ class EvaluationConfig:
     # Dataset settings
     dataset_name: str = "FrenzyMath/Herald_proofs"
     dataset_split: str = "test"  # Use test split for evaluation
-    max_samples: Optional[int] = 200  # Limit samples for faster evaluation
+    max_samples: Optional[int] = 300  # Limit samples for faster evaluation
     
     # Generation settings
     max_new_tokens: int = 512
