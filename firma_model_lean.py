@@ -2,7 +2,7 @@
 """
 firma_model_lean.py - FIRMA model adapted for Lean-Workbook dataset
 Bidirectional translation between formal theorems and natural language
-FIXED: Dynamic attention heads + cache compatibility
+FIXED: Dynamic attention heads + cache compatibility + shared tensor save error
 """
 
 import os
@@ -487,6 +487,20 @@ class FIRMA(nn.Module):
     def save_pretrained(self, output_dir):
         """Save model and FIRMA components"""
         Path(output_dir).mkdir(parents=True, exist_ok=True)
+        
+        # THE FIX: Untie weights before saving to avoid shared memory error
+        if hasattr(self.base_model, 'base_model'):
+            # For PEFT models
+            base = self.base_model.base_model.model
+        else:
+            # For non-PEFT models
+            base = self.base_model.model if hasattr(self.base_model, 'model') else self.base_model
+        
+        # Untie weights if they are tied
+        if hasattr(base, 'lm_head') and hasattr(base, 'embed_tokens'):
+            if base.lm_head.weight.data_ptr() == base.embed_tokens.weight.data_ptr():
+                logger.info("Untying shared weights before saving")
+                base.lm_head.weight = nn.Parameter(base.embed_tokens.weight.clone())
         
         self.base_model.save_pretrained(output_dir)
         
