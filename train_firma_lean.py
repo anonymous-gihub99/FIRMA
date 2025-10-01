@@ -36,14 +36,14 @@ class TrainingConfig:
     
     # Dataset - REDUCED for faster training
     dataset_name: str = "Qwen/Qwen3-0.6B"
-    max_samples: Optional[int] = 5000
+    max_samples: Optional[int] = 5800
     train_split: float = 0.9
     val_split: float = 0.05
     test_split: float = 0.05
     
     # Training - OPTIMIZED FOR MEMORY
     output_dir: str = "./firma_lean_model"
-    num_train_epochs: int = 2
+    num_train_epochs: int = 1
     per_device_train_batch_size: int = 4
     per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 4
